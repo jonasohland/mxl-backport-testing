@@ -16,4 +16,11 @@ jobs:
       - name: Create backport pull requests
         uses: korthout/backport-action@v4
         with:
-          label_pattern: ^backport-([^ ]+)$
+          label_pattern: ^backport/([^ ]+)$
+          branch_name: backport/${pull_number}/-/${target_branch}
+          copy_assignees: true
+          copy_requested_reviewers: true
+          git_committer_name: backport-bot
+          git_committer_email: backport-bot@ebu.ch
+          pull_description: 'Backport of #${pull_number} to `${target_branch}`.'
+          pull_title: '[Backport to ${target_branch}] ${pull_title}'
