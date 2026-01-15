@@ -24,3 +24,4 @@ jobs:
           git_committer_email: backport-bot@ebu.ch
           pull_description: 'Backport of #${pull_number} to `${target_branch}`.'
           pull_title: '[Backport to ${target_branch}] ${pull_title}'
+          add_labels: 'backport,automation'
