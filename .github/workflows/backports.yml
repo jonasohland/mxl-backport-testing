@@ -34,5 +34,5 @@ jobs:
           git_committer_name: backport-bot
           git_committer_email: backport-bot@ebu.ch
           pull_description: 'Backport of #${pull_number} to `${target_branch}`.'
-          pull_title: '[Backport to ${target_branch}] ${pull_title}'
+          pull_title: '[Backport to ${{ steps.target-branch.outputs.release-version }}] ${pull_title}'
           add_labels: 'backport,automation'
