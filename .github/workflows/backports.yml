@@ -1,33 +1,74 @@
 name: Backport merged pull request
 on:
   pull_request_target:
-    types: [closed]
+    types: [closed, labeled]
 permissions:
   contents: write # so it can comment
   pull-requests: write # so it can create pull requests
 jobs:
-  backport:
+  inspect-closed:
+    name: "PR closed: detect backport labels"
+    runs-on: ubuntu-latest
+    if: |
+        github.event.pull_request.merged 
+          && github.event.action == 'closed'
+          && github.event.action != 'labeled'
+    outputs:
+      target-branches: ${{ steps.target-branches.outputs.target-branches }}
+    steps:
+      - name: Test
+        id: target-branches
+        run: printf 'target-branches=%s\n' "$(sed -nE 's%backport/(.*)%\"release/\1\"%p' <<<"${{ join(github.event.pull_request.labels.*.name, '\n') }}" | jq -cs '.')" >>$GITHUB_OUTPUT
+  inspect-labeled:
+    name: "PR labeled: detect backport labels"
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.merged
+        && github.event.action != 'closed'
+        && github.event.action == 'labeled'
+        && startsWith(github.event.label.name, 'backport/')
+    outputs:
+      target-branch: ${{ steps.target-branches.outputs.target-branch }}
+    steps:
+      - name: Test
+        id: target-branches
+        run: printf 'target-branch=%s\n' "$(sed -nE 's%backport/(.*)%release/\1%p' <<<"${{ github.event.label.name }}")" >>$GITHUB_OUTPUT
+  backport-labeled:
     name: Backport pull request
     runs-on: ubuntu-latest
-    # Don't run on closed unmerged pull requests
-    if: github.event.pull_request.merged
+    needs: inspect-labeled
     steps:
       - uses: actions/checkout@v4
-      - name: Get target branch
-        id: target-branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUM: ${{ github.event.number }}
-        run: |
-          labels="$(gh api repos/jonasohland/mxl-backport-testing/pulls/${PR_NUM} | jq -r '.labels | .[].name' | grep 'backport/.*')" || true
-          if [[ -z "${labels}" ]]; then echo "No backport labels"; exit 0; fi
-          echo "target-branches=$(sed -nE 's%backport/(.*)%release/\1%p' <<<"${labels}" | tr '\n' ' ' | xargs)" >>$GITHUB_OUTPUT
-          echo "backport=true" >> $GITHUB_OUTPUT
+      - name: Print target branches
+        run: echo ${{ needs.inspect-labeled.outputs.target-branch }}
       - name: Create backport pull requests
-        if: "${{ steps.target-branch.outputs.backport == 'true' }}"
         uses: korthout/backport-action@v4
         with:
-          target_branches: ${{ steps.target-branch.outputs.target-branches }}
+          label_pattern: a^
+          target_branches: ${{ needs.inspect-labeled.outputs.target-branch }}
+          branch_name: backport/${pull_number}/-/${target_branch}
+          copy_assignees: true
+          copy_requested_reviewers: true
+          git_committer_name: backport-bot
+          git_committer_email: backport-bot@ebu.ch
+          pull_description: 'Backport of #${pull_number} to `${target_branch}`.'
+          pull_title: '[Backport to ${target_branch}] ${pull_title}'
+          add_labels: 'backport,automation'
+  backport-closed:
+    name: Backport pull request
+    runs-on: ubuntu-latest
+    needs: inspect-closed
+    if: ${{ needs.inspect-closed.outputs.target-branches != '[]' }}
+    strategy:
+      matrix:
+        target-branch: ${{ fromJSON(needs.inspect-closed.outputs.target-branches) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create backport pull requests
+        uses: korthout/backport-action@v4
+        with:
+          label_pattern:
+          target_branches: ${{ matrix.target-branch }}
           branch_name: backport/${pull_number}/-/${target_branch}
           copy_assignees: true
           copy_requested_reviewers: true
